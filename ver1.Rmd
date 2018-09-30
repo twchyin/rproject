@@ -1,0 +1,117 @@
+---
+title: "ver1"
+author: "nightowl"
+date: "September 29, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(data.table)
+library(dplyr)
+library(tidyverse)
+library(jsonlite)
+library(magrittr)
+```
+
+## Load data
+
+```{r load data, include=FALSE}
+train <- read.csv("train.csv")
+test <- read.csv("test.csv")
+```
+
+## COnvert JSON to columns (borrowed from kxx kernel)
+```{r}
+
+
+### 
+flatten_json <- . %>% 
+  str_c(., collapse = ",") %>%  #combine all rows into one big strings
+  str_c("[", ., "]") %>%  #put open and close bracket
+  jsonlite::fromJSON(.,flatten = T) #flatten the JSON list
+
+parse <- . %>% 
+  bind_cols(flatten_json(.$device)) %>%
+  bind_cols(flatten_json(.$geoNetwork)) %>% 
+  bind_cols(flatten_json(.$trafficSource)) %>% 
+  bind_cols(flatten_json(.$totals)) %>% 
+  select(-device, -geoNetwork, -trafficSource, -totals)
+
+
+train <- parse(train)
+test <- parse(test)
+
+```
+
+## Quick data count
+
+
+```{r data check, echo=FALSE}
+
+load("working_file.RData")
+
+glimpse(train)
+glimpse(test)
+
+
+# different columns between train and test
+
+setdiff(names(train),names(test)) #"campaignCode"       "transactionRevenue"
+
+# remove campaignCode from train as it does not exist in test
+
+train %<>% select(-one_of("campaignCode"))
+
+# unique count of all columns and identify single value columns
+col_remove <- train %>% summarise_all(n_distinct) %>% gather("key") %>% filter(value==1) %>% select(key)
+
+# remove single value columns
+train %<>% select(-one_of(col_remove[["key"]]))
+test %<>% select(-one_of(col_remove[["key"]]))
+
+train %>% summarise_all(n_distinct) %>% gather("key") %>%
+ggplot(aes(x=reorder(key,desc(value)), y=value, label=value)) +
+  geom_col()+
+  theme_minimal()+
+  geom_text()+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+# Channel grouping count
+train %>% group_by(channelGrouping) %>% tally()
+test %>% group_by(channelGrouping) %>% tally()
+
+# social Engagement count
+train %>% group_by(socialEngagementType) %>% tally()
+test %>% group_by(socialEngagementType) %>% tally()
+
+# visit number count
+train %>% group_by(visitNumber) %>% tally()
+test %>% group_by(visitNumber) %>% tally()
+
+# NA count
+train %>% group_by(visitNumber) %>% tally()
+```
+- channelGrouping: convert to factor.
+- date: convert to date format
+- device: convert json format to columns
+- fullvisitorId: ok
+- geoNetwork: convert json format to columns
+- sessionId: ok
+- socialEngagementType: single value. remove
+- totals: convert json format to columns
+- trafficSource: convert json format to columns
+- visitID: conver to character
+- visitNumber: ok
+- visitStartTime: convert to date
+
+```{r}
+ 
+test %>% summarise_all(n_distinct) %>% gather("key") %>% filter(value==1)
+  # ggplot(aes(x=reorder(key,desc(value)), y=value, label=value)) +
+  # geom_col()+
+  # theme_minimal()+
+  # geom_text()+
+  # theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
